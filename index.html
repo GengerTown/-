@@ -3,16 +3,15 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
-<title>兵卒棋 V0.5.8</title>
+<title>兵卒棋</title>
 <style>
-  :root{--wood:#e4cc9e;--grid:#8c6239;--white:#f5f5f5;--black:#222;--select:#00aeff;--bg:#f4f1eb}
+  :root{--wood:#e4cc9e;--line:#8c6239;--white:#f5f5f5;--black:#222;--select:#00aeff;--bg:#f4f1eb}
   html,body{height:100%;margin:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial}
-  #title{font-size:2.2rem;font-weight:700;color:var(--black);margin:12px 0 4px}
-  #subtitle{font-size:1rem;color:#555;margin-bottom:12px}
+  #title{font-size:2.2rem;font-weight:700;color:var(--black);margin:12px 0}
   #top{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center}
-  #board{--size:min(80vw,320px);width:var(--size);height:var(--size);display:flex;flex-direction:column;border:1px solid var(--grid)}
+  #board{--size:min(80vw,320px);width:var(--size);height:var(--size);display:flex;flex-direction:column}
   .row{flex:1;display:flex}
-  .cell{flex:1;border:.5px solid var(--grid);background:var(--wood);position:relative}
+  .cell{flex:1;border:.5px solid var(--line);background:var(--wood);position:relative}
   .cell::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:80%;border-radius:50%}
   .white::after{background:var(--white);border:1px solid #000}
   .black::after{background:var(--black);border:1px solid var(--white)}
@@ -27,13 +26,14 @@
 </head>
 <body>
 
-<!-- 其余 HTML 不变 -->
 <div id="title">兵卒棋</div>
 <div id="subtitle">Chinese Pawn Chess</div>
+
 <div id="top">
   <div id="board"></div>
   <div id="info">请选择棋盘尺寸</div>
 </div>
+
 <div id="controls">
   <button onclick="chooseSize(4)">4×4</button>
   <button onclick="chooseSize(5)">5×5</button>
@@ -48,6 +48,7 @@
   <button onclick="restart()">重新开始</button>
   <button onclick="showRules()">规则介绍</button>
 </div>
+
 <div id="rulesDlg">
   <div id="rulesBox">
     <h2>兵卒棋 V0.5.8 规则</h2>
@@ -114,7 +115,7 @@ function render() {
 
 /* === 玩家落子 === */
 function handleClick(e) {
-  if (gameOver) return;
+  if (gameOver || turn !== 'white') return;
   const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
   if (selected) {
     const {r: sr, c: sc} = selected;
@@ -122,11 +123,11 @@ function handleClick(e) {
       moveAndProcess(sr, sc, r, c);
       if (!gameOver && aiEnabled && turn === 'black') setTimeout(aiMove, 400);
     } else {
-      selected = (board[r][c] === turn) ? {r, c} : null;
+      selected = (board[r][c] === 'white') ? {r, c} : null;
       render();
     }
   } else {
-    if (board[r][c] === turn) { selected = {r, c}; render(); }
+    if (board[r][c] === 'white') { selected = {r, c}; render(); }
   }
 }
 function canMove(sr, sc, tr, tc) {
@@ -147,32 +148,31 @@ function moveAndProcess(sr, sc, tr, tc) {
 /* === 吃子逻辑 === */
 function removeCaptured(r, c) {
   const color = board[r][c], enemy = color === 'white' ? 'black' : 'white';
-  // 检查行和列
-  [[0, 1, r], [1, 0, c]].forEach(([dr, dc, fixed]) => {
-    const pieces = [];
+  const dirs = [[0, 1], [1, 0]];
+  dirs.forEach(([dr, dc]) => {
+    let total = 0;
     for (let k = 0; k < N; k++) {
-      const nr = dr ? fixed : k;
-      const nc = dc ? fixed : k;
-      if (board[nr][nc] !== null) pieces.push({r: nr, c: nc, val: board[nr][nc]});
+      const nr = dr ? k : r, nc = dc ? k : c;
+      if (board[nr][nc] !== null) total++;
     }
-    if (pieces.length !== 3) return;
-    // 检查是否连续无空位
-    for (let i = 0; i <= pieces.length - 3; i++) {
-      const [a, b, cc] = [pieces[i], pieces[i+1], pieces[i+2]];
-      const dx = Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
-      const dy = Math.abs(b.r - cc.r) + Math.abs(b.c - cc.c);
-      if (dx !== 1 || dy !== 1) continue;
-      if (a.val === color && b.val === color && cc.val === enemy) {
-        board[cc.r][cc.c] = null; return;
+    if (total > 3) return;
+    for (let start = 0; start <= N - 3; start++) {
+      const cells = [];
+      let ok = true;
+      for (let k = start; k < start + 3; k++) {
+        const nr = dr ? k : r, nc = dc ? k : c;
+        if (board[nr][nc] === null) { ok = false; break; }
+        cells.push({r: nr, c: nc, val: board[nr][nc]});
       }
-      if (a.val === enemy && b.val === color && cc.val === color) {
-        board[a.r][a.c] = null; return;
-      }
+      if (!ok) continue;
+      const [a, b, cc] = cells;
+      if (a.val === enemy && b.val === color && cc.val === color) board[a.r][a.c] = null;
+      else if (a.val === color && b.val === color && cc.val === enemy) board[cc.r][cc.c] = null;
     }
   });
 }
 
-/* === AI 引擎（与之前相同，略）=== */
+/* === AI 引擎 === */
 function aiMove() {
   if (gameOver || turn !== 'black') return;
   let bestMove = null;
@@ -257,9 +257,9 @@ function countThreats(color) {
       const cells = [];
       let ok = true;
       for (let k = start; k < start + 3; k++) {
-        const nr = dr ? 0 : k, nc = dc ? 0 : k;
+        const nr = dr ? k : start, nc = dc ? k : start;
         if (nr < 0 || nr >= N || nc < 0 || nc >= N) { ok = false; break; }
-        cells.push(board[dr ? k : nr][dc ? k : nc]);
+        cells.push(board[nr][nc]);
       }
       if (!ok) continue;
       const [a, b, c] = cells;
