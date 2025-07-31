@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"/>
+<title>战五据 4.3 正式版</title>
+<style>
+  :root{--wood:#e4cc9e;--line:#8c6239;--white:#f5f5f5;--black:#222;--select:#00aeff;--bg:#f4f1eb}
+  html,body{height:100%;margin:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial}
+  #title{font-size:2.2rem;font-weight:700;color:var(--black);margin:12px 0}
+  #top{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center}
+  #board{--size:min(80vw,320px);width:var(--size);height:var(--size);display:flex;flex-direction:column}
+  .row{flex:1;display:flex}
+  .cell{flex:1;border:.5px solid var(--line);background:var(--wood);position:relative}
+  .cell::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;height:80%;border-radius:50%}
+  .white::after{background:var(--white);border:1px solid #000}
+  .black::after{background:var(--black);border:1px solid var(--white)}
+  .selected::after{box-shadow:0 0 0 4px var(--select),0 0 6px 5px var(--select)}
+  #info{margin:10px 0;font-size:1.1rem;font-weight:600}
+  #controls{width:100%;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:6px}
+  button{padding:8px 14px;border:none;border-radius:4px;background:#007acc;color:#fff;font-size:1rem}
+  select{padding:4px 8px;border-radius:4px;margin-left:4px}
+  #rulesDlg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
+  #rulesBox{background:#fff;border-radius:8px;padding:20px;max-width:90%;max-height:90%;overflow-y:auto}
+</style>
+</head>
+<body>
+
+<div id="title">战五据</div>
+
+<div id="top">
+  <div id="board"></div>
+  <div id="info">请选择棋盘尺寸</div>
+</div>
+
+<div id="controls">
+  <button onclick="chooseSize(4)">4×4</button>
+  <button onclick="chooseSize(5)">5×5</button>
+  <label>AI难度
+    <select id="aiLevel" onchange="setAILevel(this.value)">
+      <option value="easy">简单</option>
+      <option value="medium">中等</option>
+      <option value="hard">困难</option>
+    </select>
+  </label>
+  <button onclick="toggleAI()"><span id="aiBtn">关闭 AI</span></button>
+  <button onclick="restart()">重新开始</button>
+  <button onclick="showRules()">规则介绍</button>
+</div>
+
+<div id="rulesDlg">
+  <div id="rulesBox">
+    <h2>战五据 4.3 规则</h2>
+    <p>1. 棋盘可选 4×4 或 5×5，黑棋在上，白棋在下。</p>
+    <p>2. 白先手，每次沿横/纵线移动 1 格，不可越子。</p>
+    <p>3. 移动后，若某条横线或纵线出现恰好 3 枚棋子连续且中间无空位，则：</p>
+    <ul>
+      <li>敌 我 我 → 移除第 1 枚敌</li>
+      <li>我 我 敌 → 移除第 3 枚敌</li>
+    </ul>
+    <p>4. 整条线上不得多于 3 枚棋子。</p>
+    <p>5. 剩余棋子少于 2 的一方判负。</p>
+    <p>6. AI 三档：简单/中等/困难，绝境时会主动破局。</p>
+    <button onclick="hideRules()">关闭</button>
+  </div>
+</div>
+
+<script>
+/* === 基础变量 === */
+let N = 5;
+let board, turn, selected, gameOver;
+let aiEnabled = false;
+let aiLevel = 'easy';
+
+/* === 棋盘绘制 === */
+function buildBoard() {
+  const b = document.getElementById('board');
+  b.innerHTML = '';
+  for (let r = 0; r < N; r++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (let c = 0; c < N; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.addEventListener('click', handleClick);
+      row.appendChild(cell);
+    }
+    b.appendChild(row);
+  }
+}
+function initBoard() {
+  board = Array.from({length:N}, () => Array(N).fill(null));
+  for (let c = 0; c < N; c++) {
+    board[0][c] = 'black';      // 黑在上
+    board[N-1][c] = 'white';    // 白在下
+  }
+  turn = 'white';
+  selected = null;
+  gameOver = false;
+  buildBoard();
+  render();
+}
+
+/* === 渲染 === */
+function render() {
+  document.querySelectorAll('.cell').forEach(cell => {
+    cell.className = 'cell';
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    const p = board[r][c];
+    if (p) cell.classList.add(p);
+    if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
+  });
+  const w = [].concat(...board).filter(x => x === 'white').length;
+  const b = [].concat(...board).filter(x => x === 'black').length;
+  document.getElementById('info').textContent = gameOver
+    ? (w < 2 ? '黑方胜！' : '白方胜！')
+    : (turn === 'white' ? '白方回合' : '黑方回合') + (aiEnabled && turn === 'black' ? ' (AI思考…)' : '');
+}
+
+/* === 玩家落子 === */
+function handleClick(e) {
+  if (gameOver || turn !== 'white') return;
+  const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
+  if (selected) {
+    const {r: sr, c: sc} = selected;
+    if (canMove(sr, sc, r, c)) {
+      moveAndProcess(sr, sc, r, c);
+      if (!gameOver && aiEnabled && turn === 'black') setTimeout(aiMove, 400);
+    } else {
+      selected = (board[r][c] === 'white') ? {r, c} : null;
+      render();
+    }
+  } else {
+    if (board[r][c] === 'white') { selected = {r, c}; render(); }
+  }
+}
+function canMove(sr, sc, tr, tc) {
+  return board[tr][tc] === null && ((Math.abs(sr - tr) === 1 && sc === tc) || (Math.abs(sc - tc) === 1 && sr === tr));
+}
+function moveAndProcess(sr, sc, tr, tc) {
+  board[tr][tc] = board[sr][sc];
+  board[sr][sc] = null;
+  removeCaptured(tr, tc);
+  const w = [].concat(...board).filter(x => x === 'white').length;
+  const b = [].concat(...board).filter(x => x === 'black').length;
+  if (w < 2 || b < 2) gameOver = true;
+  else turn = turn === 'white' ? 'black' : 'white';
+  selected = null;
+  render();
+}
+
+/* === 吃子逻辑 === */
+function removeCaptured(r, c) {
+  const color = board[r][c], enemy = color === 'white' ? 'black' : 'white';
+  const dirs = [[0, 1], [1, 0]];
+  dirs.forEach(([dr, dc]) => {
+    let total = 0;
+    for (let k = 0; k < N; k++) {
+      const nr = dr ? k : r, nc = dc ? k : c;
+      if (board[nr][nc] !== null) total++;
+    }
+    if (total > 3) return;
+    for (let start = 0; start <= N - 3; start++) {
+      const cells = [];
+      let ok = true;
+      for (let k = start; k < start + 3; k++) {
+        const nr = dr ? k : r, nc = dc ? k : c;
+        if (board[nr][nc] === null) { ok = false; break; }
+        cells.push({r: nr, c: nc, val: board[nr][nc]});
+      }
+      if (!ok) continue;
+      const [a, b, cc] = cells;
+      if (a.val === enemy && b.val === color && cc.val === color) board[a.r][a.c] = null;
+      else if (a.val === color && b.val === color && cc.val === enemy) board[cc.r][cc.c] = null;
+    }
+  });
+}
+
+/* === AI 引擎 === */
+function aiMove() {
+  if (gameOver || turn !== 'black') return;
+  let bestMove = null;
+  switch (aiLevel) {
+    case 'easy': bestMove = randomMove(); break;
+    case 'medium': bestMove = minimaxMove(1); break;
+    case 'hard': bestMove = minimaxMove(3); break;
+  }
+  if (bestMove) moveAndProcess(bestMove.sr, bestMove.sc, bestMove.tr, bestMove.tc);
+}
+function randomMove() {
+  const moves = generateMoves('black');
+  return moves.length ? moves[Math.floor(Math.random() * moves.length)] : null;
+}
+function minimaxMove(depth) {
+  const moves = generateMoves('black');
+  if (!moves.length) return null;
+  let bestVal = -Infinity, bestMove = null;
+  for (const m of moves) {
+    const backup = JSON.parse(JSON.stringify(board));
+    board[m.tr][m.tc] = board[m.sr][m.sc]; board[m.sr][m.sc] = null;
+    removeCaptured(m.tr, m.tc);
+    const val = minimax(depth, -Infinity, Infinity, false);
+    board.splice(0, N, ...backup);
+    if (val > bestVal) { bestVal = val; bestMove = m; }
+  }
+  return bestMove;
+}
+function minimax(depth, alpha, beta, maximizing) {
+  if (depth === 0 || gameOver) return evaluate(maximizing ? 'black' : 'white');
+  const color = maximizing ? 'black' : 'white';
+  const moves = generateMoves(color);
+  if (!moves.length) return evaluate(color);
+  if (maximizing) {
+    let maxEval = -Infinity;
+    for (const m of moves) {
+      const backup = JSON.parse(JSON.stringify(board));
+      board[m.tr][m.tc] = board[m.sr][m.sc]; board[m.sr][m.sc] = null;
+      removeCaptured(m.tr, m.tc);
+      const val = minimax(depth - 1, alpha, beta, false);
+      board.splice(0, N, ...backup);
+      maxEval = Math.max(maxEval, val);
+      alpha = Math.max(alpha, val);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const m of moves) {
+      const backup = JSON.parse(JSON.stringify(board));
+      board[m.tr][m.tc] = board[m.sr][m.sc]; board[m.sr][m.sc] = null;
+      removeCaptured(m.tr, m.tc);
+      const val = minimax(depth - 1, alpha, beta, true);
+      board.splice(0, N, ...backup);
+      minEval = Math.min(minEval, val);
+      beta = Math.min(beta, val);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+function evaluate(color) {
+  const enemy = color === 'white' ? 'black' : 'white';
+  let score = 0;
+  const w = [].concat(...board).filter(x => x === 'white').length;
+  const b = [].concat(...board).filter(x => x === 'black').length;
+  score += (color === 'white' ? w - b : b - w) * 100;
+  score += generateMoves(color).length * 5;
+  score -= generateMoves(enemy).length * 5;
+  score += countThreats(color) * 50;
+  score -= countThreats(enemy) * 50;
+  if (count(color) <= 3) score += countSacrifice(color) * 200;
+  score += (Math.random() - 0.5) * 10;
+  return score;
+}
+function count(color) { return [].concat(...board).filter(x => x === color).length; }
+function countThreats(color) {
+  let threats = 0;
+  const dirs = [[0, 1], [1, 0]];
+  dirs.forEach(([dr, dc]) => {
+    for (let start = 0; start <= N - 3; start++) {
+      const cells = [];
+      let ok = true;
+      for (let k = start; k < start + 3; k++) {
+        const nr = dr ? k : start, nc = dc ? k : start;
+        if (nr < 0 || nr >= N || nc < 0 || nc >= N) { ok = false; break; }
+        cells.push(board[nr][nc]);
+      }
+      if (!ok) continue;
+      const [a, b, c] = cells;
+      if (a === color && b === color && c === null) threats++;
+      if (a === null && b === color && c === color) threats++;
+    }
+  });
+  return threats;
+}
+function countSacrifice(color) {
+  let sac = 0;
+  const moves = generateMoves(color);
+  for (const m of moves) {
+    const backup = JSON.parse(JSON.stringify(board));
+    board[m.tr][m.tc] = board[m.sr][m.sc]; board[m.sr][m.sc] = null;
+    removeCaptured(m.tr, m.tc);
+    const newThreat = countThreats(color) - countThreats(color === 'white' ? 'black' : 'white');
+    sac += newThreat;
+    board.splice(0, N, ...backup);
+  }
+  return sac;
+}
+function generateMoves(color) {
+  const pieces = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (board[r][c] === color) pieces.push({r, c});
+  const moves = [];
+  pieces.forEach(({r, c}) => {
+    [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dr, dc]) => {
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < N && nc >= 0 && nc < N && board[nr][nc] === null)
+        moves.push({sr: r, sc: c, tr: nr, tc: nc});
+    });
+  });
+  return moves;
+}
+
+/* ================= 控制 ================= */
+function setAILevel(level) { aiLevel = level; }
+function toggleAI() {
+  aiEnabled = !aiEnabled;
+  document.getElementById('aiBtn').textContent = aiEnabled ? '关闭 AI' : '开启 AI';
+  if (aiEnabled && turn === 'black' && !gameOver) setTimeout(aiMove, 400);
+}
+function chooseSize(n) { N = n; initBoard(); }
+function restart() { initBoard(); }
+function showRules() { document.getElementById('rulesDlg').style.display = 'flex'; }
+function hideRules() { document.getElementById('rulesDlg').style.display = 'none'; }
+
+initBoard();
+</script>
+</body>
+</html>
