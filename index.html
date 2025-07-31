@@ -44,14 +44,14 @@
       <option value="hard">困难</option>
     </select>
   </label>
-  <button onclick="toggleAI()"><span id="aiBtn">开启 AI</span></button>
+  <button onclick="toggleAI()"><span id="aiBtn">开启AI</span></button>
   <button onclick="restart()">重新开始</button>
   <button onclick="showRules()">规则介绍</button>
 </div>
 
 <div id="rulesDlg">
   <div id="rulesBox">
-    <h2>兵卒棋 V0.5.8 规则</h2>
+    <h2>兵卒棋 V0.6.0 规则</h2>
     <p>1. 移动规则：轮流移动棋子，白棋先手，每次沿横向/纵向移动1格；</p>
     <p>2. 吃子规则：若移动后，横向和纵向出现恰好三枚棋子连续且中间无空位，且该条线上没有其他棋子，棋子排列为”我我敌“或”敌我我“时，则移除敌方棋子；</p>
     <p>3. 胜负规则：剩余棋子少于2枚的一方判负。</p>
@@ -87,8 +87,8 @@ function buildBoard() {
 function initBoard() {
   board = Array.from({length:N}, () => Array(N).fill(null));
   for (let c = 0; c < N; c++) {
-    board[0][c] = 'black';      // 黑在上
-    board[N-1][c] = 'white';    // 白在下
+    board[0][c] = 'black';
+    board[N-1][c] = 'white';
   }
   turn = 'white';
   selected = null;
@@ -115,19 +115,20 @@ function render() {
 
 /* === 玩家落子 === */
 function handleClick(e) {
-  if (gameOver || turn !== 'white') return;
+  if (gameOver) return;
   const r = +e.currentTarget.dataset.r, c = +e.currentTarget.dataset.c;
+  const currentColor = aiEnabled ? 'white' : turn;
   if (selected) {
     const {r: sr, c: sc} = selected;
     if (canMove(sr, sc, r, c)) {
       moveAndProcess(sr, sc, r, c);
       if (!gameOver && aiEnabled && turn === 'black') setTimeout(aiMove, 400);
     } else {
-      selected = (board[r][c] === 'white') ? {r, c} : null;
+      selected = (board[r][c] === currentColor) ? {r, c} : null;
       render();
     }
   } else {
-    if (board[r][c] === 'white') { selected = {r, c}; render(); }
+    if (board[r][c] === currentColor) { selected = {r, c}; render(); }
   }
 }
 function canMove(sr, sc, tr, tc) {
@@ -302,7 +303,7 @@ function generateMoves(color) {
 function setAILevel(level) { aiLevel = level; }
 function toggleAI() {
   aiEnabled = !aiEnabled;
-  document.getElementById('aiBtn').textContent = aiEnabled ? '关闭 AI' : '开启 AI';
+  document.getElementById('aiBtn').textContent = aiEnabled ? '关闭AI' : '开启AI';
   if (aiEnabled && turn === 'black' && !gameOver) setTimeout(aiMove, 400);
 }
 function chooseSize(n) { N = n; initBoard(); }
