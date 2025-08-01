@@ -47,6 +47,7 @@
   <button onclick="toggleAI()"><span id="aiBtn">开启AI</span></button>
   <button onclick="restart()">重新开始</button>
   <button onclick="showRules()">规则介绍</button>
+ <button onclick="showContact()">联系我们</button>
 </div>
 
 <div id="rulesDlg">
@@ -56,6 +57,15 @@
     <p>2. 吃子规则：若移动后，横向和纵向出现恰好三枚棋子连续且中间无空位，且该条线上没有其他棋子，棋子排列为”我我敌“或”敌我我“时，则移除敌方棋子；</p>
     <p>3. 胜负规则：剩余棋子少于2枚的一方判负。</p>
     <button onclick="hideRules()">关闭</button>
+  </div>
+</div>
+
+<!-- 联系我们弹窗 -->
+<div id="contactDlg">
+  <div id="contactBox">
+    <h2>联系我们</h2>
+    <p>邮箱：<a href="mailto:jiang266200@qq.com">jiang266200@qq.com</a></p>
+    <button onclick="hideContact()">关闭</button>
   </div>
 </div>
 
